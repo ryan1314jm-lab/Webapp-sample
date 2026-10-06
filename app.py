@@ -38,49 +38,73 @@ def setup_korean_font():
 setup_korean_font()
 
 # ═══════════════════════════════════════════════
-# 실험 데이터 (진우님 1차 실험 데이터)
+# 실험 데이터 (직접 측정한 값: 채소 3종 × 농도 6단계 × 2회 = 36개)
+# 각 줄은 (처음 무게 g, 나중 무게 g), 농도 순서는 0 / 0.5 / 1 / 1.5 / 2 / 5 %
 # ═══════════════════════════════════════════════
-DATA = {
+농도 = [0, 0.5, 1, 1.5, 2, 5]
+
+RAW = {
     "무": {
-        "농도": [0, 0.5, 1, 1.5, 2, 5],
-        "변화율": [12.3, 3.9, -5.8, -11.1, -24.0, -31.9],
-        "색상": "#8B4513",
-        "이모지": "🥬",
-        "특징": "조직이 치밀하고 세포 내 물이 많아 반응이 강함",
-        "요리응용": "깍두기·동치미·무말랭이"
+        "1차": ([2.53, 2.32, 2.23, 2.52, 2.33, 2.57], [2.84, 2.41, 2.10, 2.24, 1.77, 1.75]),
+        "2차": ([2.41, 2.30, 2.36, 2.42, 2.37, 2.50], [2.69, 2.37, 2.23, 2.17, 1.73, 1.73]),
     },
     "오이": {
-        "농도": [0, 0.5, 1, 1.5, 2, 5],
-        "변화율": [7.3, 0.5, -1.7, -5.0, -8.9, -10.0],
-        "색상": "#228B22",
-        "이모지": "🥒",
-        "특징": "수분 함량이 매우 높아 반응이 완만함",
-        "요리응용": "오이지·오이무침·오이소박이"
+        "1차": ([2.05, 1.91, 1.75, 1.99, 2.03, 1.70], [2.20, 1.92, 1.72, 1.89, 1.85, 1.53]),
+        "2차": ([2.12, 2.05, 2.12, 2.23, 2.05, 2.12], [2.30, 2.07, 2.10, 2.10, 1.84, 1.90]),
     },
-    # 배추는 아직 데이터 없음 - 임시 예상값
-    "배추 (예상)": {
-        "농도": [0, 0.5, 1, 1.5, 2, 5],
-        "변화율": [8.0, 3.0, -2.0, -7.0, -13.0, -25.0],
-        "색상": "#7CB342",
-        "이모지": "🥬",
-        "특징": "잎이 얇아 반응이 빠름 (실험 예정)",
-        "요리응용": "김장·배추절임·겉절이"
-    }
+    "배추": {
+        "1차": ([2.50, 2.72, 2.44, 2.12, 2.36, 2.46], [3.49, 3.10, 2.85, 2.34, 2.37, 2.20]),
+        "2차": ([2.40, 2.50, 2.47, 2.32, 2.43, 2.36], [3.30, 2.92, 2.84, 2.52, 2.48, 2.17]),
+    },
+}
+
+정보 = {
+    "무": {"색상": "#8B4513", "이모지": "🥬", "영문": "Radish",
+           "특징": "소금 농도에 가장 크게 반응함 (5% 소금물에서 약 31% 감소)",
+           "요리응용": "깍두기·동치미·무말랭이"},
+    "오이": {"색상": "#228B22", "이모지": "🥒", "영문": "Cucumber",
+             "특징": "반응이 가장 완만함 (5% 소금물에서 약 10% 감소)",
+             "요리응용": "오이지·오이무침·오이소박이"},
+    "배추": {"색상": "#7CB342", "이모지": "🥬", "영문": "Napa cabbage",
+             "특징": "맹물에서 무게가 약 39% 늘었고, 2% 소금물에서도 줄지 않음",
+             "요리응용": "김장·배추절임·겉절이"},
 }
 
 
+def 변화율(처음, 나중):
+    """질량 변화율(%) = (나중 - 처음) / 처음 × 100"""
+    처음, 나중 = np.array(처음), np.array(나중)
+    return (나중 - 처음) / 처음 * 100
+
+
+DATA = {}
+for 이름, 회차 in RAW.items():
+    r1 = 변화율(*회차["1차"])
+    r2_ = 변화율(*회차["2차"])
+    DATA[이름] = {
+        "농도": 농도,
+        "1차": [round(float(v), 1) for v in r1],
+        "2차": [round(float(v), 1) for v in r2_],
+        "변화율": [float(v) for v in (r1 + r2_) / 2],   # 1·2차 평균
+        **정보[이름],
+    }
+
+
 def analyze(농도_list, 변화율_list):
-    """선형 회귀 분석. 등장액 농도와 R² 반환."""
-    x = np.array(농도_list)
-    y = np.array(변화율_list)
-    coef = np.polyfit(x, y, 1)
-    slope, intercept = coef[0], coef[1]
-    isotonic = -intercept / slope if slope != 0 else 0
+    """2차 다항 회귀. (회귀 계수, 세포 안의 농도, R²)를 돌려준다.
+
+    세포 안의 농도(등장액) = 회귀곡선이 변화율 0%와 만나는 소금 농도.
+    """
+    x = np.array(농도_list, dtype=float)
+    y = np.array(변화율_list, dtype=float)
+    coef = np.polyfit(x, y, 2)
+    roots = [r.real for r in np.roots(coef) if abs(r.imag) < 1e-9 and 0 <= r.real <= 5]
+    isotonic = min(roots) if roots else float("nan")
     y_pred = np.polyval(coef, x)
-    ss_res = np.sum((y - y_pred)**2)
-    ss_tot = np.sum((y - np.mean(y))**2)
-    r2 = 1 - ss_res/ss_tot if ss_tot != 0 else 0
-    return slope, intercept, isotonic, r2
+    ss_res = np.sum((y - y_pred) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot != 0 else 0
+    return coef, isotonic, r2
 
 
 # ═══════════════════════════════════════════════
@@ -118,8 +142,8 @@ if page == "🏠 홈":
 
     with col3:
         st.info("### 🎯 찾는 것")
-        st.markdown("**등장액 농도**")
-        st.markdown("세포 내부 소금 농도")
+        st.markdown("**세포 안의 농도 (등장액)**")
+        st.markdown("물이 들어오지도 나가지도 않는 소금물 농도")
 
     st.markdown("---")
 
@@ -136,7 +160,7 @@ if page == "🏠 홈":
     st.markdown("### 📱 사용법")
     st.markdown("""
     왼쪽 사이드바에서 원하는 메뉴를 선택하세요:
-    - **📊 채소별 분석**: 각 채소의 회귀 그래프와 등장액 농도
+    - **📊 채소별 분석**: 각 채소의 회귀 그래프와 세포 안의 농도
     - **🔬 삼투 시뮬레이터**: 채소·농도 입력하면 예상 결과
     - **📈 채소 비교**: 여러 채소의 특성 비교
     - **🍽️ 실생활 응용**: 요리·의학·자연 사례
@@ -155,7 +179,7 @@ elif page == "📊 채소별 분석":
     )
 
     data = DATA[채소_선택]
-    slope, intercept, isotonic, r2 = analyze(data["농도"], data["변화율"])
+    coef, isotonic, r2 = analyze(data["농도"], data["변화율"])
 
     st.markdown(f"### {data['이모지']} {채소_선택}")
 
@@ -164,25 +188,25 @@ elif page == "📊 채소별 분석":
     with col1:
         # 그래프
         fig, ax = plt.subplots(figsize=(9, 6))
-        ax.scatter(data["농도"], data["변화율"], color=data["색상"], s=150, zorder=5, label="실측 데이터")
-        x_line = np.linspace(-0.2, max(data["농도"]) + 0.5, 100)
-        y_line = np.polyval([slope, intercept], x_line)
-        ax.plot(x_line, y_line, '--', color=data["색상"], linewidth=2, label=f"회귀선 (R²={r2:.3f})")
+        ax.scatter(data["농도"], data["변화율"], color=data["색상"], s=150, zorder=5, label="Measured (mean of 2)")
+        x_line = np.linspace(0, 5, 200)
+        y_line = np.polyval(coef, x_line)
+        ax.plot(x_line, y_line, '-', color=data["색상"], linewidth=2, label=f"Quadratic fit (R²={r2:.3f})")
         ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5)
         ax.plot(isotonic, 0, 'o', color=data["색상"], markersize=15, markerfacecolor='white', markeredgewidth=3)
-        ax.annotate(f'Isotonic {isotonic:.2f}%', xy=(isotonic, 0), xytext=(isotonic + 0.2, 3),
+        ax.annotate(f'{isotonic:.2f}%', xy=(isotonic, 0), xytext=(isotonic + 0.2, 3),
                     fontsize=11, color=data["색상"], fontweight='bold')
         ax.set_xlabel("Salt Concentration (%)", fontsize=13)
         ax.set_ylabel("Mass Change (%)", fontsize=13)
-        ax.set_title(f"{채소_선택} Osmosis Analysis", fontsize=14, fontweight='bold')
+        ax.set_title(f"{data['영문']} Osmosis Analysis", fontsize=14, fontweight='bold')
         ax.legend(fontsize=11)
         ax.grid(True, alpha=0.3)
         st.pyplot(fig)
 
     with col2:
-        st.metric("등장액 농도", f"{isotonic:.2f}%")
+        st.metric("세포 안의 농도 (등장액)", f"{isotonic:.2f}%")
         st.metric("R² (회귀 신뢰도)", f"{r2:.3f}")
-        st.metric("회귀식 기울기", f"{slope:.2f}")
+        st.metric("5% 소금물에서 변화율", f"{data['변화율'][-1]:+.1f}%")
 
         st.markdown("---")
         st.markdown(f"**특징**")
@@ -197,9 +221,11 @@ elif page == "📊 채소별 분석":
     st.markdown("### 📋 원본 데이터")
     df = pd.DataFrame({
         "소금 농도 (%)": data["농도"],
-        "질량 변화율 (%)": data["변화율"]
+        "1차 변화율 (%)": data["1차"],
+        "2차 변화율 (%)": data["2차"],
+        "평균 변화율 (%)": [round(v, 1) for v in data["변화율"]],
     })
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df)
 
 
 # ═══════════════════════════════════════════════
@@ -218,9 +244,9 @@ elif page == "🔬 삼투 시뮬레이터":
 
     with col2:
         data = DATA[채소_선택]
-        slope, intercept, isotonic, r2 = analyze(data["농도"], data["변화율"])
+        coef, isotonic, r2 = analyze(data["농도"], data["변화율"])
 
-        예상_변화율 = slope * 농도_입력 + intercept
+        예상_변화율 = float(np.polyval(coef, 농도_입력))
         예상_변화량 = 초기_무게 * 예상_변화율 / 100
         예상_최종_무게 = 초기_무게 + 예상_변화량
 
@@ -243,20 +269,20 @@ elif page == "🔬 삼투 시뮬레이터":
     # 그래프 (사용자 입력 지점 강조)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.scatter(data["농도"], data["변화율"], color=data["색상"], s=120, zorder=5, label="Experimental Data")
-    x_line = np.linspace(-0.2, 5.5, 100)
-    y_line = np.polyval([slope, intercept], x_line)
-    ax.plot(x_line, y_line, '--', color=data["색상"], linewidth=2, label="Regression Line")
+    x_line = np.linspace(0, 5, 200)
+    y_line = np.polyval(coef, x_line)
+    ax.plot(x_line, y_line, '-', color=data["색상"], linewidth=2, label="Regression Curve")
     # 사용자 입력 지점
     ax.plot(농도_입력, 예상_변화율, '*', color='red', markersize=25, zorder=10, label=f"Your input")
     ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5)
     ax.set_xlabel("Salt Concentration (%)", fontsize=12)
     ax.set_ylabel("Mass Change (%)", fontsize=12)
-    ax.set_title(f"{채소_선택} Simulation", fontsize=13, fontweight='bold')
+    ax.set_title(f"{data['영문']} Simulation", fontsize=13, fontweight='bold')
     ax.legend()
     ax.grid(True, alpha=0.3)
     st.pyplot(fig)
 
-    st.info("💡 이 계산은 우리 실험 데이터의 선형 회귀식을 사용한 예측입니다. 실제 결과는 채소 상태·온도·시간에 따라 다를 수 있습니다.")
+    st.info("💡 이 계산은 우리 실험 데이터(0~5%, 1시간 담금)의 2차 회귀식을 사용한 예측입니다. 2%와 5% 사이는 측정값이 없어 참고용이며, 실제 결과는 채소 상태·온도·시간에 따라 다를 수 있습니다.")
 
 
 # ═══════════════════════════════════════════════
@@ -272,17 +298,17 @@ elif page == "📈 채소 비교":
     비교_데이터 = []
 
     for name, data in DATA.items():
-        slope, intercept, isotonic, r2 = analyze(data["농도"], data["변화율"])
-        ax.scatter(data["농도"], data["변화율"], color=data["색상"], s=100, zorder=5, label=f"{name}")
-        x_line = np.linspace(-0.2, 5.5, 100)
-        y_line = np.polyval([slope, intercept], x_line)
-        ax.plot(x_line, y_line, '--', color=data["색상"], linewidth=2, alpha=0.7)
+        coef, isotonic, r2 = analyze(data["농도"], data["변화율"])
+        ax.scatter(data["농도"], data["변화율"], color=data["색상"], s=100, zorder=5, label=data["영문"])
+        x_line = np.linspace(0, 5, 200)
+        y_line = np.polyval(coef, x_line)
+        ax.plot(x_line, y_line, '-', color=data["색상"], linewidth=2, alpha=0.8)
         비교_데이터.append({
             "채소": name,
-            "등장액 농도 (%)": round(isotonic, 2),
-            "회귀 기울기": round(slope, 2),
-            "R²": round(r2, 3),
-            "반응 강도": "강함" if abs(slope) > 6 else ("중간" if abs(slope) > 3 else "약함")
+            "세포 안의 농도 (%)": round(isotonic, 2),
+            "맹물(0%)에서 변화율 (%)": round(data["변화율"][0], 1),
+            "5% 소금물에서 변화율 (%)": round(data["변화율"][-1], 1),
+            "R² (2차 회귀)": round(r2, 3),
         })
 
     ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5)
@@ -298,14 +324,14 @@ elif page == "📈 채소 비교":
     # 비교 표
     st.markdown("### 📊 비교 표")
     df = pd.DataFrame(비교_데이터)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df)
 
     st.markdown("---")
 
     st.markdown("### 🔍 발견한 점")
     st.markdown("""
-    - **등장액 농도는 채소마다 다르다**: 세포 내부의 삼투압 조건이 다르기 때문
-    - **반응 강도(기울기)도 채소마다 다르다**: 세포 구조·수분 함량 차이
+    - **세포 안의 농도는 채소마다 다르다**: 무 0.64%, 오이 0.73%, 배추 2.08% (배추가 약 3배)
+    - **반응 크기도 채소마다 다르다**: 5% 소금물에서 무는 약 31%, 오이와 배추는 약 10% 줄었다
     - **R² 값으로 회귀 신뢰도 확인**: 값이 높을수록 우리 회귀선이 데이터를 잘 설명
     """)
 
@@ -327,7 +353,7 @@ elif page == "🍽️ 실생활 응용":
         **🥬 김장 배추 절임**
         - 배추에 소금을 뿌리면 → 세포에서 물이 빠져나옴 → 숨이 죽음
         - 물이 빠진 자리에 김치 양념이 잘 배어듦
-        - 소금 농도: 보통 3~5% 사용
+        - 절임 소금물 농도: 보통 10% 안팎 (8~12%)
         
         **🥒 오이 무침 전 소금 뿌리기**
         - 오이 세포에서 물을 빼내 → 아삭한 식감 유지 + 양념 흡수
@@ -415,7 +441,7 @@ elif page == "ℹ️ 프로그램 소개":
     **사용한 기술:**
     - **Python** (numpy, matplotlib, pandas)
     - **Streamlit** (웹앱 프레임워크)
-    - **선형 회귀 분석**
+    - **2차 다항 회귀 분석**
     - **GitHub + Streamlit Cloud** (배포)
     """)
 
@@ -427,7 +453,7 @@ elif page == "ℹ️ 프로그램 소개":
     - **소금 농도**: 0%, 0.5%, 1%, 1.5%, 2%, 5% (6단계)
     - **반복**: 2회
     - **측정**: 담그기 전/후 질량 변화
-    - **분석**: 선형 회귀 → 등장액 농도 도출
+    - **분석**: 2차 다항 회귀 → 세포 안의 농도(등장액) 도출
     """)
 
     st.markdown("---")
